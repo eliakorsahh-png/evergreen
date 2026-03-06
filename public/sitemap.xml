@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PATH: public/sitemap.xml -->
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- Homepage — highest priority -->
+  <url>
+    <loc>https://evergreenaset.com/</loc>
+    <lastmod>2026-03-06</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://evergreenaset.com/hero.jpeg</image:loc>
+      <image:title>Evergreen Asset — Earn Daily Returns in Ghana</image:title>
+      <image:caption>Buy a package from GHS 100 and earn daily returns via MTN MoMo</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Sign up page -->
+  <url>
+    <loc>https://evergreenaset.com/signup</loc>
+    <lastmod>2026-03-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Login page -->
+  <url>
+    <loc>https://evergreenaset.com/login</loc>
+    <lastmod>2026-03-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+</urlset>

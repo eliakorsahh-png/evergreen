@@ -1,0 +1,18 @@
+# PATH: public/robots.txt
+User-agent: *
+Allow: /
+
+# Block private app pages from being indexed
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /deposit
+Disallow: /withdraw
+Disallow: /referrals
+Disallow: /login
+Disallow: /signup
+
+# Allow search engines to find hero image for previews
+Allow: /hero.jpeg
+Allow: /icon-512.png
+
+Sitemap: https://evergreenaset.com/sitemap.xml
