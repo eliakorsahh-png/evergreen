@@ -1,23 +1,25 @@
-// PATH: app/api/admin-auth/route.ts
-// Server-side only — password never reaches the browser
-
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-  const { password } = await req.json();
+  try {
+    const body = await req.json();
+    const { password } = body;
+    const correct = process.env.ADMIN_PASSWORD;
 
-  // process.env.ADMIN_PASSWORD (no NEXT_PUBLIC_ prefix = server only)
-  const correct = process.env.ADMIN_PASSWORD;
+    // TEMPORARY DEBUG — remove after fixing
+    console.log("ENV password:", JSON.stringify(correct));
+    console.log("Entered password:", JSON.stringify(password));
+    console.log("Match:", password === correct);
 
-  if (!correct) {
-    return NextResponse.json({ error: "Admin password not configured." }, { status: 500 });
+    if (!correct) {
+      return NextResponse.json({ error: "ADMIN_PASSWORD not set." }, { status: 401 });
+    }
+    if (!password || password !== correct) {
+      return NextResponse.json({ error: "Wrong password." }, { status: 401 });
+    }
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    console.error("[admin-auth] error:", err);
+    return NextResponse.json({ error: "Server error." }, { status: 500 });
   }
-
-  if (password !== correct) {
-    return NextResponse.json({ error: "Wrong password." }, { status: 401 });
-  }
-
-  // Return a simple session token the client stores in memory
-  // (not localStorage — just React state, cleared on refresh)
-  return NextResponse.json({ ok: true });
 }

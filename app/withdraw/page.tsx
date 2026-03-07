@@ -13,22 +13,18 @@ const supabase = createClient(
 const WITHDRAWAL_FEE_PERCENT = 10;
 const MIN_WITHDRAWAL = 45;
 
-type Profile = {
-  id: string;
-  full_name: string;
-  phone: string;
-  balance: number;
-};
+type Profile = { id: string; full_name: string; phone: string; balance: number; };
 
 export default function WithdrawPage() {
-  const [profile, setProfile]         = useState<Profile | null>(null);
-  const [amount, setAmount]           = useState("");
-  const [phone, setPhone]             = useState("");
-  const [loading, setLoading]         = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
-  const [success, setSuccess]         = useState(false);
-  const [error, setError]             = useState("");
-  const [finalAmount, setFinalAmount] = useState(0);
+  const [profile, setProfile]           = useState<Profile | null>(null);
+  const [amount, setAmount]             = useState("");
+  const [phone, setPhone]               = useState("");
+  const [momoName, setMomoName]         = useState("");
+  const [loading, setLoading]           = useState(false);
+  const [pageLoading, setPageLoading]   = useState(true);
+  const [success, setSuccess]           = useState(false);
+  const [error, setError]               = useState("");
+  const [finalAmount, setFinalAmount]   = useState(0);
   const [hasDeposited, setHasDeposited] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -36,21 +32,11 @@ export default function WithdrawPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) { window.location.href = "/login"; return; }
 
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-
+      const { data: prof } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
       setProfile(prof as Profile);
       setPhone((prof as Profile)?.phone || "");
 
-      const { data: deposits } = await supabase
-        .from("deposits")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .limit(1);
-
+      const { data: deposits } = await supabase.from("deposits").select("id").eq("user_id", session.user.id).limit(1);
       setHasDeposited(!!deposits && deposits.length > 0);
       setPageLoading(false);
     }
@@ -62,34 +48,18 @@ export default function WithdrawPage() {
   const youReceive = numAmount - fee;
 
   const isWithinHours = () => {
-    const now  = new Date();
-    const day  = now.getDay();
-    const hour = now.getHours();
-    return day >= 1 && day <= 6 && hour >= 9 && hour < 16;
+    const now = new Date();
+    return now.getDay() >= 1 && now.getDay() <= 6 && now.getHours() >= 9 && now.getHours() < 16;
   };
 
   const handleSubmit = async () => {
     setError("");
-    if (!hasDeposited) {
-      setError("You must make a deposit before you can withdraw.");
-      return;
-    }
-    if (!isWithinHours()) {
-      setError("Withdrawals are only processed Monday–Saturday, 9am–4pm.");
-      return;
-    }
-    if (numAmount < MIN_WITHDRAWAL) {
-      setError(`Minimum withdrawal is GHS ${MIN_WITHDRAWAL}.`);
-      return;
-    }
-    if (numAmount > (profile?.balance || 0)) {
-      setError("Insufficient balance.");
-      return;
-    }
-    if (!phone.trim()) {
-      setError("Please enter your MoMo phone number.");
-      return;
-    }
+    if (!hasDeposited) { setError("You must make a deposit before you can withdraw."); return; }
+    if (!isWithinHours()) { setError("Withdrawals are only processed Monday–Saturday, 9am–4pm."); return; }
+    if (numAmount < MIN_WITHDRAWAL) { setError(`Minimum withdrawal is GHS ${MIN_WITHDRAWAL}.`); return; }
+    if (numAmount > (profile?.balance || 0)) { setError("Insufficient balance."); return; }
+    if (!phone.trim()) { setError("Please enter your MoMo phone number."); return; }
+    if (!momoName.trim()) { setError("Please enter your MoMo account name."); return; }
     if (!profile) return;
 
     setLoading(true);
@@ -101,12 +71,10 @@ export default function WithdrawPage() {
         amount_after_fee: youReceive,
         phone,
         status: "pending",
+        names: momoName.trim(),
       });
 
-      await supabase
-        .from("profiles")
-        .update({ balance: (profile.balance || 0) - numAmount })
-        .eq("id", profile.id);
+      await supabase.from("profiles").update({ balance: (profile.balance || 0) - numAmount }).eq("id", profile.id);
 
       await supabase.from("notifications").insert({
         user_id: profile.id,
@@ -124,7 +92,6 @@ export default function WithdrawPage() {
     }
   };
 
-  // ── Loading ──────────────────────────────────────────────────────────────────
   if (pageLoading) {
     return (
       <div className="min-h-screen bg-[#050E1F] flex items-center justify-center">
@@ -133,7 +100,6 @@ export default function WithdrawPage() {
     );
   }
 
-  // ── Success ──────────────────────────────────────────────────────────────────
   if (success) {
     return (
       <main className="min-h-screen bg-[#050E1F] flex items-center justify-center px-4">
@@ -141,13 +107,10 @@ export default function WithdrawPage() {
           <div className="text-5xl mb-4">💸</div>
           <h2 className="text-xl font-bold text-white mb-2">Withdrawal Submitted!</h2>
           <p className="text-white/60 text-sm mb-2">
-            You will receive{" "}
-            <span className="text-green-400 font-bold">GHS {finalAmount.toFixed(2)}</span>{" "}
-            after the 10% fee.
+            You will receive <span className="text-green-400 font-bold">GHS {finalAmount.toFixed(2)}</span> after the 10% fee.
           </p>
           <p className="text-white/40 text-xs mb-6">Processing time: 9 hours – 1 business day</p>
-          <Link href="/dashboard"
-            className="block py-3 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition">
+          <Link href="/dashboard" className="block py-3 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition">
             Back to Dashboard
           </Link>
         </div>
@@ -155,30 +118,20 @@ export default function WithdrawPage() {
     );
   }
 
-  // ── No deposit yet ───────────────────────────────────────────────────────────
   if (hasDeposited === false) {
     return (
       <main className="min-h-screen bg-[#050E1F] flex items-center justify-center px-4">
         <div className="bg-[#0A1628] border border-orange-500/30 rounded-2xl p-8 max-w-sm w-full text-center">
           <div className="text-5xl mb-4">🔒</div>
           <h2 className="text-xl font-bold text-white mb-2">Deposit Required</h2>
-          <p className="text-white/60 text-sm mb-6">
-            You need to make at least one deposit before you can withdraw funds.
-          </p>
-          <Link href="/deposit"
-            className="block py-3 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition mb-3">
-            Make a Deposit
-          </Link>
-          <Link href="/dashboard"
-            className="block py-3 border border-white/10 text-white/60 hover:text-white rounded-xl transition text-sm">
-            Back to Dashboard
-          </Link>
+          <p className="text-white/60 text-sm mb-6">You need to make at least one deposit before you can withdraw funds.</p>
+          <Link href="/deposit" className="block py-3 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition mb-3">Make a Deposit</Link>
+          <Link href="/dashboard" className="block py-3 border border-white/10 text-white/60 hover:text-white rounded-xl transition text-sm">Back to Dashboard</Link>
         </div>
       </main>
     );
   }
 
-  // ── Main ────────────────────────────────────────────────────────────────────
   return (
     <main className="min-h-screen bg-[#050E1F] text-white pb-12">
       <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10">
@@ -194,17 +147,13 @@ export default function WithdrawPage() {
             ? "bg-green-500/10 border-green-500/30 text-green-400"
             : "bg-orange-500/10 border-orange-500/30 text-orange-400"
         }`}>
-          {isWithinHours()
-            ? "✅ Withdrawals are open now (9am–4pm, Mon–Sat)"
-            : "⏰ Withdrawals available Monday–Saturday, 9am–4pm"}
+          {isWithinHours() ? "✅ Withdrawals are open now (9am–4pm, Mon–Sat)" : "⏰ Withdrawals available Monday–Saturday, 9am–4pm"}
         </div>
 
         {/* Balance */}
         <div className="bg-[#0A1628] border border-white/10 rounded-2xl p-5">
           <p className="text-white/50 text-xs">Available Balance</p>
-          <p className="text-3xl font-extrabold text-white">
-            GHS {(profile?.balance || 0).toFixed(2)}
-          </p>
+          <p className="text-3xl font-extrabold text-white">GHS {(profile?.balance || 0).toFixed(2)}</p>
         </div>
 
         {/* Amount */}
@@ -222,25 +171,16 @@ export default function WithdrawPage() {
         {/* Fee Breakdown */}
         {numAmount > 0 && (
           <div className="bg-[#0A1628] border border-white/10 rounded-xl p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-white/50">Requested</span>
-              <span>GHS {numAmount.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/50">10% Fee</span>
-              <span className="text-orange-400">- GHS {fee.toFixed(2)}</span>
-            </div>
+            <div className="flex justify-between"><span className="text-white/50">Requested</span><span>GHS {numAmount.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-white/50">10% Fee</span><span className="text-orange-400">- GHS {fee.toFixed(2)}</span></div>
             <div className="h-px bg-white/10" />
-            <div className="flex justify-between font-bold">
-              <span>You Receive</span>
-              <span className="text-green-400">GHS {youReceive.toFixed(2)}</span>
-            </div>
+            <div className="flex justify-between font-bold"><span>You Receive</span><span className="text-green-400">GHS {youReceive.toFixed(2)}</span></div>
           </div>
         )}
 
         {/* MoMo Number */}
         <div>
-          <label className="text-white/60 text-xs block mb-2">MTN MoMo Number</label>
+          <label className="text-white/60 text-xs block mb-2">MTN MoMo Number <span className="text-red-400">*</span></label>
           <input
             type="tel"
             value={phone}
@@ -250,15 +190,26 @@ export default function WithdrawPage() {
           />
         </div>
 
+        {/* MoMo Account Name */}
+        <div>
+          <label className="text-white/60 text-xs block mb-2">MoMo Account Name <span className="text-red-400">*</span></label>
+          <input
+            type="text"
+            value={momoName}
+            onChange={(e) => setMomoName(e.target.value)}
+            placeholder="e.g. Kwame Mensah"
+            className="w-full bg-[#0A1628] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:border-green-500 focus:outline-none transition"
+          />
+          <p className="text-white/30 text-xs mt-1.5">Enter the name registered on your MoMo account.</p>
+        </div>
+
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl">
-            {error}
-          </div>
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl">{error}</div>
         )}
 
         <button
           onClick={handleSubmit}
-          disabled={loading || numAmount < MIN_WITHDRAWAL}
+          disabled={loading || numAmount < MIN_WITHDRAWAL || !momoName.trim() || !phone.trim()}
           className="w-full py-4 bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold rounded-xl text-lg transition"
         >
           {loading ? (
@@ -266,16 +217,13 @@ export default function WithdrawPage() {
               <span className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
               Processing...
             </span>
-          ) : (
-            "Request Withdrawal"
-          )}
+          ) : "Request Withdrawal"}
         </button>
 
         <p className="text-white/30 text-xs text-center">
           Withdrawals are manually approved · 9hrs–1 day processing<br />
           Min GHS {MIN_WITHDRAWAL} · 10% service fee applies
         </p>
-
       </div>
     </main>
   );

@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-type Package        = { id: string; amount: number; daily_earnings: number; duration_days: number; active: boolean };
+type Package        = { id: string; name: string; amount: number; daily_earnings: number; duration_days: number; active: boolean };
 type PaymentSetting = { id: string; account_number: string; account_name: string; network: string; active: boolean };
 
 export default function DepositPage() {
@@ -18,6 +18,7 @@ export default function DepositPage() {
   const [packages, setPackages]           = useState<Package[]>([]);
   const [payment, setPayment]             = useState<PaymentSetting | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
+  const [momoName, setMomoName]           = useState("");
   const [file, setFile]                   = useState<File | null>(null);
   const [preview, setPreview]             = useState<string | null>(null);
   const [loading, setLoading]             = useState(true);
@@ -27,7 +28,6 @@ export default function DepositPage() {
 
   useEffect(() => {
     async function init() {
-      // Get current session — required for storage upload auth
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) { window.location.href = "/login"; return; }
       setUserId(session.user.id);
@@ -37,11 +37,10 @@ export default function DepositPage() {
         supabase.from("payment_settings").select("*").eq("active", true).maybeSingle(),
       ]);
 
-      const pkgs: Package[] = pkgRes.data || [];
+      const pkgs: Package[] = (pkgRes.data as Package[]) || [];
       setPackages(pkgs);
       setPayment(payRes.data || null);
 
-      // Pre-select package from URL param
       const pkgAmount = parseInt(new URLSearchParams(window.location.search).get("package") || "");
       if (pkgAmount) {
         const found = pkgs.find(p => p.amount === pkgAmount);
@@ -56,9 +55,7 @@ export default function DepositPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    // Validate file type
     if (!f.type.startsWith("image/")) { setError("Please upload an image file (JPG, PNG, WEBP)."); return; }
-    // Validate file size (max 5MB)
     if (f.size > 5 * 1024 * 1024) { setError("File too large. Maximum size is 5MB."); return; }
     setError("");
     setFile(f);
@@ -67,6 +64,7 @@ export default function DepositPage() {
 
   const handleSubmit = async () => {
     if (!selectedPackage) { setError("Please select a package."); return; }
+    if (!momoName.trim()) { setError("Please enter your Mobile Money account name."); return; }
     if (!file) { setError("Please upload your payment screenshot."); return; }
     if (!userId) { setError("Session expired. Please log in again."); return; }
 
@@ -74,7 +72,6 @@ export default function DepositPage() {
     setError("");
 
     try {
-      // Re-check session before upload — important!
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         setError("Your session expired. Please log in again.");
@@ -82,45 +79,37 @@ export default function DepositPage() {
         return;
       }
 
-      // Build a clean filename
       const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
       const filename = `deposits/${userId}-${Date.now()}.${ext}`;
 
-      // Upload to Supabase storage bucket "green"
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("green")
-        .upload(filename, file, {
-          contentType: file.type,
-          upsert: false,
-        });
+        .upload(filename, file, { contentType: file.type, upsert: false });
 
       if (uploadError) {
-        // Provide a clear error based on the code
         if (uploadError.message.includes("row-level security") || uploadError.message.includes("policy")) {
-          setError("Storage permission denied. Please ask admin to run supabase-storage-fix.sql in the SQL editor.");
+          setError("Storage permission denied. Please ask admin to run supabase-storage-fix.sql.");
         } else if (uploadError.message.includes("Bucket not found")) {
-          setError('Bucket "green" not found. Please create it in Supabase Storage and run supabase-storage-fix.sql.');
+          setError('Bucket "green" not found. Please create it in Supabase Storage.');
         } else {
           setError("Upload failed: " + uploadError.message);
         }
         return;
       }
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage.from("green").getPublicUrl(filename);
 
-      // Insert deposit record
       const { error: depositError } = await supabase.from("deposits").insert({
         user_id: userId,
         amount: selectedPackage.amount,
         daily_earnings: selectedPackage.daily_earnings,
         screenshot_url: publicUrl,
         status: "pending",
+        names: momoName.trim(),
       });
 
       if (depositError) throw depositError;
 
-      // Send notification
       await supabase.from("notifications").insert({
         user_id: userId,
         title: "📨 Deposit Request Received",
@@ -136,7 +125,6 @@ export default function DepositPage() {
     }
   };
 
-  // ─── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-[#050E1F] flex items-center justify-center">
@@ -145,7 +133,6 @@ export default function DepositPage() {
     );
   }
 
-  // ─── Success ────────────────────────────────────────────────────────────────
   if (success) {
     return (
       <main className="min-h-screen bg-[#050E1F] flex items-center justify-center px-4">
@@ -159,9 +146,7 @@ export default function DepositPage() {
           <div className="bg-[#050E1F] rounded-xl p-3 my-4 text-xs text-white/40">
             You will get a notification once approved.
           </div>
-          <p className="text-white/40 text-xs mb-6">
-            Need help?<br />+1 (289) 908-2443 · +1 (343) 443-6208
-          </p>
+          <p className="text-white/40 text-xs mb-6">Need help?<br />+1 (289) 908-2443 · +1 (343) 443-6208</p>
           <Link href="/dashboard" className="block w-full py-3 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl transition">
             Back to Dashboard
           </Link>
@@ -170,7 +155,6 @@ export default function DepositPage() {
     );
   }
 
-  // ─── Main ───────────────────────────────────────────────────────────────────
   return (
     <main className="min-h-screen bg-[#050E1F] text-white pb-16">
       <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10">
@@ -223,29 +207,67 @@ export default function DepositPage() {
           {packages.length === 0 ? (
             <p className="text-white/30 text-sm">No packages available. Contact admin.</p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {packages.map((pkg) => (
-                <div
-                  key={pkg.id}
-                  onClick={() => { setSelectedPackage(pkg); setError(""); }}
-                  className={`rounded-xl p-4 border cursor-pointer transition select-none ${
-                    selectedPackage?.id === pkg.id
-                      ? "border-green-500 bg-green-500/10 shadow-lg shadow-green-500/10"
-                      : "border-white/10 bg-[#0A1628] hover:border-white/30"
-                  }`}
-                >
-                  <p className="font-bold text-white">GHS {pkg.amount}</p>
-                  <p className={`text-sm font-semibold ${selectedPackage?.id === pkg.id ? "text-green-400" : "text-white/50"}`}>
-                    GHS {pkg.daily_earnings}/day
-                  </p>
-                  <p className="text-white/30 text-xs mt-0.5">⏱ {pkg.duration_days || 30} days</p>
-                  {selectedPackage?.id === pkg.id && (
-                    <p className="text-green-400 text-xs mt-1 font-semibold">✓ Selected</p>
-                  )}
-                </div>
-              ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {packages.map((pkg) => {
+                const isSelected = selectedPackage?.id === pkg.id;
+                const totalReturn = pkg.daily_earnings * (pkg.duration_days || 30);
+                const emoji = pkg.amount >= 2000 ? "💎" : pkg.amount >= 1000 ? "🥇" : pkg.amount >= 500 ? "🥈" : "🥉";
+                return (
+                  <div
+                    key={pkg.id}
+                    onClick={() => { setSelectedPackage(pkg); setError(""); }}
+                    className={`rounded-2xl p-5 border-2 cursor-pointer transition select-none ${
+                      isSelected
+                        ? "border-green-500 bg-green-500/10 shadow-lg shadow-green-500/10"
+                        : "border-white/10 bg-[#0A1628] hover:border-white/30"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{emoji}</span>
+                        <span className={`font-extrabold text-base ${isSelected ? "text-green-400" : "text-white/80"}`}>
+                          {pkg.name || "Package"}
+                        </span>
+                      </div>
+                      {isSelected && (
+                        <span className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-xs text-black font-bold flex-shrink-0">✓</span>
+                      )}
+                    </div>
+                    <p className="text-3xl font-extrabold text-white">GHS {pkg.amount}</p>
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
+                      <div>
+                        <p className="text-white/40 text-xs">Daily</p>
+                        <p className="text-green-400 font-bold">GHS {pkg.daily_earnings}/day</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-white/40 text-xs">Duration</p>
+                        <p className="text-white font-semibold text-sm">{pkg.duration_days || 30} days</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 bg-white/5 rounded-xl px-3 py-2 text-center">
+                      <p className="text-white/40 text-xs">Total Return</p>
+                      <p className="text-white font-bold">GHS {totalReturn.toLocaleString()}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
+        </div>
+
+        {/* MOMO NAME */}
+        <div>
+          <label className="text-white/60 text-sm font-semibold block mb-2">
+            Your Mobile Money Account Name <span className="text-red-400">*</span>
+          </label>
+          <input
+            type="text"
+            value={momoName}
+            onChange={(e) => setMomoName(e.target.value)}
+            placeholder="e.g. Kwame Mensah"
+            className="w-full bg-[#0A1628] border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-white/30 focus:border-green-500 focus:outline-none transition"
+          />
+          <p className="text-white/30 text-xs mt-1.5">Enter the name registered on the MoMo account you sent from.</p>
         </div>
 
         {/* UPLOAD SCREENSHOT */}
@@ -271,32 +293,22 @@ export default function DepositPage() {
         {/* SUMMARY */}
         {selectedPackage && (
           <div className="bg-[#0A1628] border border-white/10 rounded-xl p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-white/50">Package</span>
-              <span className="font-bold">GHS {selectedPackage.amount}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/50">Daily Earnings</span>
-              <span className="text-green-400 font-bold">GHS {selectedPackage.daily_earnings}/day</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/50">Duration</span>
-              <span>{selectedPackage.duration_days || 30} days</span>
-            </div>
+            <div className="flex justify-between"><span className="text-white/50">Package</span><span className="font-bold">{selectedPackage.name || `GHS ${selectedPackage.amount}`}</span></div>
+            <div className="flex justify-between"><span className="text-white/50">Amount</span><span className="font-bold">GHS {selectedPackage.amount}</span></div>
+            <div className="flex justify-between"><span className="text-white/50">Daily Earnings</span><span className="text-green-400 font-bold">GHS {selectedPackage.daily_earnings}/day</span></div>
+            <div className="flex justify-between"><span className="text-white/50">Duration</span><span>{selectedPackage.duration_days || 30} days</span></div>
+            <div className="flex justify-between border-t border-white/10 pt-2"><span className="text-white/50">Total Return</span><span className="text-white font-bold">GHS {(selectedPackage.daily_earnings * (selectedPackage.duration_days || 30)).toLocaleString()}</span></div>
+            {momoName && <div className="flex justify-between border-t border-white/10 pt-2"><span className="text-white/50">MoMo Name</span><span className="text-white font-semibold">{momoName}</span></div>}
           </div>
         )}
 
-        {/* ERROR */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl">
-            {error}
-          </div>
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl">{error}</div>
         )}
 
-        {/* SUBMIT */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !selectedPackage || !file || !payment}
+          disabled={submitting || !selectedPackage || !file || !payment || !momoName.trim()}
           className="w-full py-4 bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold rounded-xl text-lg transition shadow-lg shadow-green-500/20"
         >
           {submitting ? (
@@ -304,9 +316,7 @@ export default function DepositPage() {
               <span className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
               Uploading...
             </span>
-          ) : (
-            "Submit Deposit Request ✅"
-          )}
+          ) : "Submit Deposit Request ✅"}
         </button>
 
         <p className="text-white/30 text-xs text-center pb-4">

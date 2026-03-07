@@ -11,7 +11,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-type Package    = { id: string; amount: number; daily_earnings: number; duration_days: number; active: boolean };
+type Package    = { id: string; name: string; amount: number; daily_earnings: number; duration_days: number; active: boolean };
 type Investment = { id: string; amount: number; daily_earnings: number; active: boolean; created_at: string };
 type Profile    = {
   id: string; full_name: string; email: string; phone: string;
@@ -20,6 +20,11 @@ type Profile    = {
   banned: boolean; banned_reason?: string;
 };
 
+const WHATSAPP_GROUP   = "https://chat.whatsapp.com/Gd7PcmtOoil5AxlPDrV3Q2";
+const SUPPORT_WHATSAPP = "https://wa.me/12899082443";
+const SUPPORT_PHONE_1  = "+1 (289) 908-2443";
+const SUPPORT_PHONE_2  = "+1 (343) 443-6208";
+
 export default function DashboardPage() {
   const [profile, setProfile]         = useState<Profile | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
@@ -27,12 +32,13 @@ export default function DashboardPage() {
   const [loading, setLoading]         = useState(true);
   const [copied, setCopied]           = useState(false);
   const [tab, setTab]                 = useState<"overview" | "invest" | "referral" | "redeem">("overview");
+  const [showSupport, setShowSupport] = useState(false);
 
   // Redeem state
   const [redeemCode, setRedeemCode]         = useState("");
   const [redeemLoading, setRedeemLoading]   = useState(false);
   const [redeemMsg, setRedeemMsg]           = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [todayCodeActive, setTodayCodeActive] = useState(false); // is there a live code right now?
+  const [todayCodeActive, setTodayCodeActive] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -47,7 +53,7 @@ export default function DashboardPage() {
 
       setProfile(profRes.data);
       setInvestments(invRes.data || []);
-      setPackages(pkgRes.data || []);
+      setPackages((pkgRes.data as Package[]) || []);
 
       // Check if there's an active code today
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -64,7 +70,12 @@ export default function DashboardPage() {
   }, []);
 
   const handleLogout = async () => { await supabase.auth.signOut(); window.location.href = "/login"; };
-  const handleCopy = () => { navigator.clipboard.writeText(referralLink); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(referralLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // ─── Redeem handler ────────────────────────────────────────────────────────
   const handleRedeem = async () => {
@@ -72,10 +83,9 @@ export default function DashboardPage() {
     setRedeemLoading(true);
     setRedeemMsg(null);
 
-    const code = redeemCode.trim().toUpperCase();
+    const code   = redeemCode.trim().toUpperCase();
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    // 1. Find active (non-expired) code
     const { data: codeRow } = await supabase
       .from("redeem_codes")
       .select("*")
@@ -89,7 +99,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // 2. Check if user already redeemed this code
     const { data: existingLog } = await supabase
       .from("redeem_logs")
       .select("id")
@@ -103,7 +112,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // 3. Credit balance
     const newBalance = (profile.balance || 0) + codeRow.value;
     const { error: balErr } = await supabase
       .from("profiles")
@@ -116,10 +124,7 @@ export default function DashboardPage() {
       return;
     }
 
-    // 4. Log it
     await supabase.from("redeem_logs").insert({ user_id: profile.id, code_id: codeRow.id });
-
-    // 5. Notify
     await supabase.from("notifications").insert({
       user_id: profile.id,
       title: "🎟️ Code Redeemed Successfully!",
@@ -147,14 +152,14 @@ export default function DashboardPage() {
         <div className="bg-[#0A1628] border border-red-500/30 rounded-2xl p-8 max-w-sm w-full text-center">
           <div className="text-5xl mb-4">🚫</div>
           <h2 className="text-xl font-bold text-white mb-2">Account Suspended</h2>
-          <p className="text-white/50 text-sm mb-3">Your account has been suspended and you cannot access the platform.</p>
+          <p className="text-white/50 text-sm mb-3">Your account has been suspended.</p>
           {profile.banned_reason && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-5">
               <p className="text-red-400 text-xs font-semibold">Reason</p>
               <p className="text-white/60 text-sm mt-0.5">{profile.banned_reason}</p>
             </div>
           )}
-          <p className="text-white/40 text-xs mb-5">To appeal, contact us:<br />+1 (289) 908-2443 · +1 (343) 443-6208</p>
+          <p className="text-white/40 text-xs mb-5">To appeal:<br />{SUPPORT_PHONE_1} · {SUPPORT_PHONE_2}</p>
           <button onClick={handleLogout} className="w-full py-3 border border-white/20 rounded-xl text-sm text-white/60 hover:text-white transition">Sign Out</button>
         </div>
       </main>
@@ -168,15 +173,52 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-[#050E1F] text-white pb-24">
 
-      {/* NAV */}
-      <nav className="flex items-center justify-between px-4 py-3.5 border-b border-white/10 bg-[#050E1F]/95 backdrop-blur sticky top-0 z-50">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center flex-shrink-0">
-            <img src="/favicon.ico" alt="Evergreen Asset" className="w-full rounded-full h-full object-contain" />
+      {/* Support Modal */}
+      {showSupport && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end justify-center px-4 pb-8">
+          <div className="bg-[#0A1628] border border-white/10 rounded-2xl p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-bold text-lg">Customer Support</h3>
+              <button onClick={() => setShowSupport(false)} className="text-white/40 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="space-y-3">
+              <a href={SUPPORT_WHATSAPP} target="_blank" rel="noreferrer"
+                className="flex items-center gap-4 bg-green-500/10 border border-green-500/30 rounded-xl p-4 hover:bg-green-500/20 transition">
+                <span className="text-3xl">💬</span>
+                <div><p className="font-bold text-green-400">WhatsApp Support</p><p className="text-white/50 text-xs">{SUPPORT_PHONE_1}</p></div>
+              </a>
+              <a href={`tel:${SUPPORT_PHONE_1.replace(/\s|\(|\)/g, "")}`}
+                className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition">
+                <span className="text-3xl">📞</span>
+                <div><p className="font-bold text-white">Call Support</p><p className="text-white/50 text-xs">{SUPPORT_PHONE_1}</p></div>
+              </a>
+              <a href={`tel:${SUPPORT_PHONE_2.replace(/\s|\(|\)/g, "")}`}
+                className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition">
+                <span className="text-3xl">📞</span>
+                <div><p className="font-bold text-white">Call Support</p><p className="text-white/50 text-xs">{SUPPORT_PHONE_2}</p></div>
+              </a>
+              <a href={WHATSAPP_GROUP} target="_blank" rel="noreferrer"
+                className="flex items-center gap-4 bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 hover:bg-blue-500/20 transition">
+                <span className="text-3xl">👥</span>
+                <div><p className="font-bold text-blue-300">Join Community Group</p><p className="text-white/50 text-xs">WhatsApp group for all members</p></div>
+              </a>
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* TOP NAV */}
+      <nav className="flex items-center justify-between px-4 py-3.5 border-b border-white/10 bg-[#050E1F]/95 backdrop-blur sticky top-0 z-40">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-sm font-bold flex-shrink-0">E</div>
           <span className="font-bold text-green-400 text-sm hidden sm:block">Evergreen Asset</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowSupport(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full text-green-400 text-xs font-semibold hover:bg-green-500/20 transition">
+            <span>💬</span>
+            <span className="hidden sm:inline">Support</span>
+          </button>
           <NotificationBell userId={profile?.id} />
           <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold cursor-pointer ring-2 ring-white/10 hover:ring-green-500/50 transition"
             style={{ backgroundColor: profile?.avatar_color || "#16A34A" }} title={profile?.full_name}>
@@ -209,8 +251,12 @@ export default function DashboardPage() {
             </div>
           )}
           <div className="flex gap-3 mt-5">
-            <Link href="/deposit" className="flex-1 py-3 bg-green-500 hover:bg-green-400 active:bg-green-600 text-black font-bold rounded-xl text-sm text-center transition shadow-lg shadow-green-500/20">💰 Deposit</Link>
-            <Link href="/withdraw" className="flex-1 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-sm text-center transition border border-white/10">💸 Withdraw</Link>
+            <Link href="/deposit" className="flex-1 py-3 bg-green-500 hover:bg-green-400 active:bg-green-600 text-black font-bold rounded-xl text-sm text-center transition shadow-lg shadow-green-500/20">
+              💰 Deposit
+            </Link>
+            <Link href="/withdraw" className="flex-1 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-sm text-center transition border border-white/10">
+              💸 Withdraw
+            </Link>
           </div>
         </div>
 
@@ -232,20 +278,50 @@ export default function DashboardPage() {
           </Link>
         </div>
 
+        {/* QUICK ACTION BUTTONS */}
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <button onClick={() => setShowSupport(true)}
+            className="bg-[#0A1628] border border-green-500/20 hover:border-green-500/50 rounded-2xl p-4 flex items-center gap-3 transition">
+            <span className="text-2xl">🎧</span>
+            <div className="text-left">
+              <p className="font-semibold text-sm text-white">Customer Service</p>
+              <p className="text-white/40 text-xs">Get help anytime</p>
+            </div>
+          </button>
+          <a href={WHATSAPP_GROUP} target="_blank" rel="noreferrer"
+            className="bg-[#0A1628] border border-blue-500/20 hover:border-blue-500/50 rounded-2xl p-4 flex items-center gap-3 transition">
+            <span className="text-2xl">👥</span>
+            <div className="text-left">
+              <p className="font-semibold text-sm text-white">Join Group</p>
+              <p className="text-white/40 text-xs">WhatsApp community</p>
+            </div>
+          </a>
+        </div>
+
         {/* TABS */}
         <div className="flex gap-1.5 mb-5 bg-[#0A1628] border border-white/10 p-1 rounded-xl overflow-x-auto">
           {(["overview", "invest", "referral", "redeem"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 min-w-fit py-2 px-2 rounded-lg text-xs font-semibold transition whitespace-nowrap relative ${tab === t ? "bg-green-500 text-black" : "text-white/40 hover:text-white"}`}>
+              className={`flex-1 min-w-fit py-2 px-2 rounded-lg text-xs font-semibold transition whitespace-nowrap relative ${
+                tab === t ? "bg-green-500 text-black" : "text-white/40 hover:text-white"
+              }`}>
               {t === "overview" ? "📊 Overview"
                 : t === "invest"   ? "📦 Packages"
                 : t === "referral" ? "🔗 Referral"
-                : <>🎟️ Redeem {todayCodeActive && tab !== "redeem" && <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-400 rounded-full" />}</>}
+                : (
+                  <>
+                    🎟️ Redeem
+                    {todayCodeActive && tab !== "redeem" && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-400 rounded-full" />
+                    )}
+                  </>
+                )
+              }
             </button>
           ))}
         </div>
 
-        {/* OVERVIEW */}
+        {/* ── TAB: OVERVIEW ── */}
         {tab === "overview" && (
           <div className="space-y-4">
             {investments.length > 0 ? (
@@ -272,53 +348,54 @@ export default function DashboardPage() {
                 <p className="text-4xl mb-3">📭</p>
                 <p className="text-white/60 font-semibold text-sm mb-1">No Active Investments</p>
                 <p className="text-white/30 text-xs mb-4">Make a deposit to start earning daily.</p>
-                <Link href="/deposit" className="inline-block px-6 py-2.5 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl text-sm transition">Make a Deposit</Link>
+                <Link href="/deposit" className="inline-block px-6 py-2.5 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl text-sm transition">
+                  Make a Deposit
+                </Link>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <a href="https://chat.whatsapp.com/Gd7PcmtOoil5AxlPDrV3Q2" target="_blank" rel="noreferrer"
-                className="bg-[#0A1628] border border-white/10 hover:border-green-500/30 rounded-xl p-4 transition text-center flex flex-col items-center gap-1">
-                <span className="text-2xl">💬</span><span className="text-xs text-white/60">WhatsApp Group</span>
-              </a>
-              <Link href="/withdraw" className="bg-[#0A1628] border border-white/10 hover:border-green-500/30 rounded-xl p-4 transition text-center flex flex-col items-center gap-1">
-                <span className="text-2xl">💸</span><span className="text-xs text-white/60">Withdraw Funds</span>
-              </Link>
-            </div>
           </div>
         )}
 
-        {/* PACKAGES */}
+        {/* ── TAB: PACKAGES ── */}
         {tab === "invest" && (
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Available Packages</h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest">Available Packages</h3>
+              <Link href="/packages" className="text-green-400 text-xs font-semibold hover:underline">View All →</Link>
+            </div>
             {packages.length === 0 ? (
               <div className="bg-[#0A1628] border border-white/10 rounded-xl p-8 text-center text-white/30 text-sm">No packages available. Check back soon.</div>
-            ) : packages.map((pkg) => (
-              <Link key={pkg.id} href={`/deposit?package=${pkg.amount}`}>
-                <div className="bg-[#0A1628] border border-white/10 hover:border-green-500/40 rounded-xl p-4 flex items-center justify-between transition group cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center font-bold text-sm text-green-400 flex-shrink-0">
-                      {pkg.amount >= 1000 ? "💎" : pkg.amount >= 500 ? "🥇" : "🥈"}
+            ) : (
+              packages.map((pkg) => (
+                <Link key={pkg.id} href={`/deposit?package=${pkg.amount}`}>
+                  <div className="bg-[#0A1628] border border-white/10 hover:border-green-500/40 rounded-xl p-4 flex items-center justify-between transition group cursor-pointer mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center font-bold text-lg flex-shrink-0">
+                        {pkg.amount >= 2000 ? "💎" : pkg.amount >= 1000 ? "🥇" : pkg.amount >= 500 ? "🥈" : "🥉"}
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm">{pkg.name || `GHS ${pkg.amount} Package`}</p>
+                        <p className="text-white/40 text-xs">GHS {pkg.amount} · {pkg.duration_days || 30} days</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold">GHS {pkg.amount}</p>
-                      <p className="text-white/40 text-xs">⏱ {pkg.duration_days || 30} days</p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-green-400 font-bold text-sm">GHS {pkg.daily_earnings}/day</p>
+                        <p className="text-white/30 text-xs">Total: GHS {(pkg.daily_earnings * (pkg.duration_days || 30)).toLocaleString()}</p>
+                      </div>
+                      <span className="text-white/30 group-hover:text-green-400 transition text-lg">→</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <p className="text-green-400 font-bold text-sm">GHS {pkg.daily_earnings}/day</p>
-                      <p className="text-white/30 text-xs">Total: GHS {(pkg.daily_earnings * (pkg.duration_days || 30)).toLocaleString()}</p>
-                    </div>
-                    <span className="text-white/30 group-hover:text-green-400 transition text-lg">→</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))
+            )}
+            <Link href="/packages" className="block w-full py-3 border border-white/10 hover:border-green-500/30 rounded-xl text-center text-white/60 hover:text-white text-sm font-semibold transition">
+              📦 View All Packages
+            </Link>
           </div>
         )}
 
-        {/* REFERRAL */}
+        {/* ── TAB: REFERRAL ── */}
         {tab === "referral" && (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-3">
@@ -341,17 +418,23 @@ export default function DashboardPage() {
               </div>
             </div>
             <Link href="/referrals" className="flex items-center justify-between bg-[#0A1628] border border-white/10 hover:border-green-500/30 rounded-xl p-4 transition">
-              <div className="flex items-center gap-3"><span className="text-2xl">👥</span><div><p className="font-semibold text-sm">View My Referrals</p><p className="text-white/40 text-xs">See who you've referred</p></div></div>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">👥</span>
+                <div>
+                  <p className="font-semibold text-sm">View My Referrals</p>
+                  <p className="text-white/40 text-xs">See who you've referred</p>
+                </div>
+              </div>
               <span className="text-white/30 text-lg">→</span>
             </Link>
           </div>
         )}
 
-        {/* REDEEM */}
+        {/* ── TAB: REDEEM ── */}
         {tab === "redeem" && (
           <div className="space-y-4">
 
-            {/* Step 1 — check notifications */}
+            {/* Step 1 */}
             <div className="relative overflow-hidden bg-gradient-to-br from-[#130d2a] to-[#0a1628] border border-purple-500/25 rounded-2xl p-5">
               <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-purple-500/5 pointer-events-none" />
               <div className="flex items-start gap-4">
@@ -370,13 +453,12 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Step 2 — enter code */}
+            {/* Step 2 */}
             <div className="bg-[#0A1628] border border-white/10 rounded-2xl p-5 space-y-3">
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-6 h-6 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-xs font-bold text-purple-400">2</div>
                 <p className="font-semibold text-sm">Enter the Code</p>
               </div>
-
               <input
                 type="text"
                 value={redeemCode}
@@ -386,13 +468,15 @@ export default function DashboardPage() {
                 maxLength={10}
                 className="w-full bg-[#050E1F] border border-white/10 rounded-xl px-4 py-4 text-white text-2xl font-mono placeholder-white/20 focus:border-purple-500 focus:outline-none transition tracking-widest text-center uppercase"
               />
-
               {redeemMsg && (
-                <div className={`rounded-xl px-4 py-3 text-sm font-semibold text-center ${redeemMsg.type === "success" ? "bg-green-500/15 border border-green-500/30 text-green-400" : "bg-red-500/10 border border-red-500/30 text-red-400"}`}>
+                <div className={`rounded-xl px-4 py-3 text-sm font-semibold text-center ${
+                  redeemMsg.type === "success"
+                    ? "bg-green-500/15 border border-green-500/30 text-green-400"
+                    : "bg-red-500/10 border border-red-500/30 text-red-400"
+                }`}>
                   {redeemMsg.text}
                 </div>
               )}
-
               <button
                 onClick={handleRedeem}
                 disabled={redeemLoading || !redeemCode.trim()}
@@ -407,12 +491,12 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* Info */}
+            {/* Info cards */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-[#0A1628] border border-white/10 rounded-xl p-4 text-center">
                 <p className="text-xl mb-1">📅</p>
                 <p className="text-white/60 text-xs font-semibold">One Per Day</p>
-                <p className="text-white/30 text-xs mt-0.5">New code released daily by admin</p>
+                <p className="text-white/30 text-xs mt-0.5">New code released daily</p>
               </div>
               <div className="bg-[#0A1628] border border-white/10 rounded-xl p-4 text-center">
                 <p className="text-xl mb-1">⏳</p>
@@ -420,11 +504,14 @@ export default function DashboardPage() {
                 <p className="text-white/30 text-xs mt-0.5">Code expires after 24 hours</p>
               </div>
             </div>
+
           </div>
         )}
 
         {/* SIGN OUT */}
-        <button onClick={handleLogout} className="w-full mt-8 py-3 text-white/20 hover:text-white/50 text-sm transition">Sign Out</button>
+        <button onClick={handleLogout} className="w-full mt-8 py-3 text-white/20 hover:text-white/50 text-sm transition">
+          Sign Out
+        </button>
 
       </div>
     </main>
