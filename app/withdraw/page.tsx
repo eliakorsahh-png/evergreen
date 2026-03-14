@@ -11,7 +11,7 @@ const supabase = createClient(
 );
 
 const WITHDRAWAL_FEE_PERCENT = 10;
-const MIN_WITHDRAWAL = 45;
+const MIN_WITHDRAWAL = 40;
 
 type Profile = { id: string; full_name: string; phone: string; balance: number; };
 
